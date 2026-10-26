@@ -1,0 +1,31 @@
+# Blueprint de Render: un único Web Service que sirve API + web compilada.
+# En Render: New → Blueprint → elige este repositorio.
+services:
+  - type: web
+    name: carreras-telemetria
+    runtime: node
+    plan: free
+    # --include=dev: TypeScript y Vite son dependencias de desarrollo y hacen falta para compilar.
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      # Se piden al crear el servicio (no se guardan en el repositorio)
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      # Sin DATABASE_URL se usa PGlite en el disco del servicio. En el plan gratuito ese
+      # disco se borra en cada despliegue o reinicio: válido para la DEMO, no para datos reales.
+      - key: DEMO_SEED
+        value: 'true'
+      - key: DEMO_AUTOSTART
+        value: 'true'
+      - key: DEMO_SPEED
+        value: 10

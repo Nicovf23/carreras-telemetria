@@ -77,6 +77,27 @@ cambiar la velocidad o borrar los datos simulados.
 
 Para empezar de cero con PGlite, detén el servidor y borra la carpeta `data/`.
 
+## Desplegar en Render
+
+Un solo **Web Service** sirve la API y la web compilada. La forma más sencilla:
+**New → Blueprint** y elige este repositorio; usa [`render.yaml`](render.yaml) y solo te pide
+`ADMIN_EMAIL` y `ADMIN_PASSWORD`.
+
+Si lo creas a mano (**New → Web Service**, no *Static Site*):
+
+| Campo | Valor |
+|---|---|
+| Runtime | Node |
+| Build Command | `npm ci --include=dev && npm run build` |
+| Start Command | `npm start` |
+| Health Check Path | `/api/health` |
+| Variables | `NODE_ENV=production`, `JWT_SECRET` (≥ 32 caracteres), `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `DEMO_SEED=true`, `DEMO_AUTOSTART=true` |
+
+Si la raíz responde *Not Found* o «La web no está compilada», el build no generó `web/dist`
+(normalmente por usar solo `npm install` como build). Sin `DATABASE_URL` los datos viven en el
+disco efímero del servicio y se pierden al redesplegar: para datos reales crea un PostgreSQL en
+Render y pon su *Internal Database URL* en `DATABASE_URL`.
+
 ## Flujo para una carrera real
 
 1. **Carreras → Nueva carrera** (modo *Oficial*), publícala como *Próxima*.

@@ -99,6 +99,22 @@ export async function buildApp(db: Db, opts: { onSnapshot?: ConstructorParameter
       }
       return reply.sendFile('index.html');
     });
+  } else {
+    // Sin la web compilada solo existe la API: lo decimos claramente en vez de un 404 genérico.
+    app.log.warn({ webDist }, 'No existe web/dist: ejecuta "npm run build" para servir la web');
+    app.setNotFoundHandler((req, reply) => {
+      if (req.url.startsWith('/api') || req.url.startsWith('/socket.io')) {
+        return reply.status(404).send({ error: 'not_found', message: 'Ruta no encontrada' });
+      }
+      return reply
+        .status(503)
+        .type('text/html; charset=utf-8')
+        .send(
+          '<h1>La web no está compilada</h1><p>El servidor (API) funciona, pero falta <code>web/dist</code>. ' +
+            'Usa como comando de build <code>npm ci --include=dev &amp;&amp; npm run build</code>. ' +
+            'API: <a href="/api/health">/api/health</a> · <a href="/api/docs">/api/docs</a></p>',
+        );
+    });
   }
 
   app.addHook('onClose', async () => {
