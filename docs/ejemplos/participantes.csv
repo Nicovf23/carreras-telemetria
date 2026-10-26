@@ -1,0 +1,4 @@
+dorsal;nombre;apellidos;equipo;pais;categoria;email;telefono;sensor_fc;fc_publica
+101;Ana;Ejemplo Uno;Club Ciclista Ejemplo;DO;ELITE;ana@ejemplo.invalid;;si;si
+102;Bruno;Ejemplo Dos;Club Ciclista Ejemplo;ES;ELITE;;;si;no
+103;Carla;Ejemplo Tres;Equipo de Prueba;COL;SUB23;;;no;no

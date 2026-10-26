@@ -1,0 +1,623 @@
+openapi: 3.0.3
+info:
+  title: Carreras Telemetría — API
+  version: 0.1.0
+  description: |
+    API de la plataforma de seguimiento y cronometraje de carreras de ciclismo.
+
+    * **Pública** (`/api/v1/races…`): sin autenticación. Nunca devuelve datos privados
+      (contacto, números de serie, claves) ni la frecuencia cardíaca sin consentimiento.
+    * **Telemetría** (`/api/v1/telemetry`): dispositivos de seguimiento, autenticados con
+      `Authorization: Bearer <serial>.<secreto>`.
+    * **Administración** (`/api/v1/admin…`): cookie de sesión `session` (httpOnly) obtenida en
+      `/api/v1/auth/login`. Las peticiones que modifican datos deben incluir `X-Requested-With: fetch`.
+    * **Tiempo real**: Socket.IO en `/socket.io`. Emitir `race:join` con el slug; se reciben eventos
+      `race:snapshot` (objeto `LiveSnapshot`) como máximo una vez por segundo.
+
+    Todas las marcas temporales son UTC en ISO 8601. Distancias en metros, tiempos en milisegundos.
+servers:
+  - url: /
+tags:
+  - name: Público
+  - name: Telemetría
+  - name: Autenticación
+  - name: Administración
+paths:
+  /api/health:
+    get:
+      tags: [Público]
+      summary: Estado del servicio
+      responses:
+        '200': { description: OK }
+  /api/v1/races:
+    get:
+      tags: [Público]
+      summary: Lista de carreras publicadas (en directo, próximas y finalizadas)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  races: { type: array, items: { $ref: '#/components/schemas/RaceSummary' } }
+  /api/v1/races/{slug}:
+    get:
+      tags: [Público]
+      summary: Detalle de una carrera con recorrido, categorías y puntos de control
+      parameters: [{ $ref: '#/components/parameters/slug' }]
+      responses:
+        '200': { description: OK }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/v1/races/{slug}/live:
+    get:
+      tags: [Público]
+      summary: Instantánea actual de la clasificación en vivo
+      parameters: [{ $ref: '#/components/parameters/slug' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LiveSnapshot' }
+  /api/v1/races/{slug}/participants/{bib}:
+    get:
+      tags: [Público]
+      summary: Perfil público de un participante (fila en vivo, parciales, recorrido y FC si es pública)
+      parameters:
+        - { $ref: '#/components/parameters/slug' }
+        - { name: bib, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/v1/races/{slug}/results:
+    get:
+      tags: [Público]
+      summary: Resultados publicados al finalizar la carrera
+      parameters: [{ $ref: '#/components/parameters/slug' }]
+      responses:
+        '200': { description: OK }
+
+  /api/v1/telemetry:
+    post:
+      tags: [Telemetría]
+      summary: Envío de telemetría (mensaje único o lote de hasta 500)
+      description: |
+        Cada mensaje se valida por separado. El dispositivo debe **eliminar de su búfer** los mensajes
+        cuya respuesta sea 200, 207 o 422 (aceptados, duplicados o rechazados definitivamente) y
+        **reintentar** solo ante errores de red, 429 o 5xx (con espera exponencial).
+        Los duplicados se detectan por `(dispositivo, ts)`, por lo que reenviar es seguro.
+        Los datos atrasados o fuera de orden se aceptan y la clasificación se recalcula.
+      security: [{ deviceToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/TelemetryMessage'
+                - type: object
+                  required: [messages]
+                  properties:
+                    messages:
+                      type: array
+                      minItems: 1
+                      maxItems: 500
+                      items: { $ref: '#/components/schemas/TelemetryMessage' }
+      responses:
+        '200': { $ref: '#/components/responses/TelemetryResult' }
+        '207': { $ref: '#/components/responses/TelemetryResult' }
+        '422': { $ref: '#/components/responses/TelemetryResult' }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { description: Demasiadas peticiones (máx. 240/min por dispositivo) }
+
+  /api/v1/auth/login:
+    post:
+      tags: [Autenticación]
+      summary: Inicio de sesión (establece la cookie `session`)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { description: Demasiados intentos (10/min) }
+  /api/v1/auth/logout:
+    post:
+      tags: [Autenticación]
+      summary: Cierra la sesión
+      responses: { '200': { description: OK } }
+  /api/v1/auth/me:
+    get:
+      tags: [Autenticación]
+      summary: Usuario de la sesión actual
+      security: [{ session: [] }]
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /api/v1/admin/races:
+    get:
+      tags: [Administración]
+      summary: Todas las carreras (incluye borradores)
+      security: [{ session: [] }]
+      responses: { '200': { description: OK } }
+    post:
+      tags: [Administración]
+      summary: Crea una carrera
+      security: [{ session: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RaceInput' }
+      responses: { '201': { description: Creada } }
+  /api/v1/admin/races/{id}:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get:
+      tags: [Administración]
+      summary: Detalle completo (recorrido, puntos de control, categorías, segmentos)
+      security: [{ session: [] }]
+      responses: { '200': { description: OK } }
+    patch:
+      tags: [Administración]
+      summary: Modifica una carrera
+      security: [{ session: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RaceInput' }
+      responses: { '200': { description: OK } }
+    delete:
+      tags: [Administración]
+      summary: Borra una carrera (organizador solo borradores/programadas; administrador cualquiera)
+      security: [{ session: [] }]
+      responses: { '200': { description: OK } }
+  /api/v1/admin/races/{id}/route:
+    put:
+      tags: [Administración]
+      summary: Define el recorrido de una vuelta (lista de puntos o GPX). Crea salida y meta automáticamente.
+      security: [{ session: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                points: { type: array, items: { type: array, items: { type: number }, minItems: 2, maxItems: 2 }, description: '[[lat, lon], …]' }
+                gpx: { type: string, description: Contenido de un archivo GPX (trkpt/rtept) }
+      responses: { '200': { description: OK } }
+  /api/v1/admin/races/{id}/categories:
+    put:
+      tags: [Administración]
+      summary: Reemplaza las categorías
+      security: [{ session: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      responses: { '200': { description: OK } }
+  /api/v1/admin/races/{id}/checkpoints:
+    post:
+      tags: [Administración]
+      summary: Añade un punto de control a una distancia del recorrido
+      security: [{ session: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, kind, distanceM]
+              properties:
+                name: { type: string }
+                kind: { type: string, enum: [start, split, finish] }
+                distanceM: { type: number }
+      responses: { '201': { description: Creado } }
+  /api/v1/admin/races/{id}/checkpoints/{cpId}:
+    patch:
+      tags: [Administración]
+      summary: Modifica un punto de control
+      security: [{ session: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }, { name: cpId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: OK } }
+    delete:
+      tags: [Administración]
+      summary: Borra un punto de control
+      security: [{ session: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }, { name: cpId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: OK } }
+  /api/v1/admin/races/{id}/start:
+    post:
+      tags: [Administración]
+      summary: Da la salida (status → live). Opcionalmente con hora `at`.
+      security: [{ session: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      responses: { '200': { description: OK } }
+  /api/v1/admin/races/{id}/finish:
+    post:
+      tags: [Administración]
+      summary: Cierra la carrera y publica los resultados (quien no llegó → DNF)
+      security: [{ session: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      responses: { '200': { description: OK } }
+  /api/v1/admin/races/{id}/reopen:
+    post:
+      tags: [Administración]
+      summary: Reabre una carrera finalizada (solo administrador; queda registrado)
+      security: [{ session: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      responses: { '200': { description: OK } }
+  /api/v1/admin/races/{id}/participants:
+    get:
+      tags: [Administración]
+      summary: Participantes con datos privados y dispositivo asignado
+      security: [{ session: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      responses: { '200': { description: OK } }
+    post:
+      tags: [Administración]
+      summary: Registra un participante
+      security: [{ session: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ParticipantInput' }
+      responses: { '201': { description: Creado } }
+  /api/v1/admin/races/{id}/participants/import:
+    post:
+      tags: [Administración]
+      summary: Importa participantes desde CSV (con `dryRun` para validar sin guardar)
+      security: [{ session: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [csv]
+              properties:
+                csv: { type: string, description: 'Columnas: dorsal, nombre, apellidos, equipo, pais, categoria, email, telefono, sensor_fc, fc_publica' }
+                dryRun: { type: boolean }
+      responses: { '200': { description: Resultado de la validación/importación } }
+  /api/v1/admin/participants/{pid}:
+    patch:
+      tags: [Administración]
+      summary: Modifica un participante (incluido su estado DNS/DNF/DSQ)
+      security: [{ session: [] }]
+      parameters: [{ name: pid, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: OK } }
+    delete:
+      tags: [Administración]
+      summary: Borra un participante
+      security: [{ session: [] }]
+      parameters: [{ name: pid, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: OK } }
+  /api/v1/admin/participants/{pid}/passings:
+    post:
+      tags: [Administración]
+      summary: Registra un paso manual por un punto de control (prevalece sobre el GPS)
+      security: [{ session: [] }]
+      parameters: [{ name: pid, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [checkpointId, passedAt]
+              properties:
+                checkpointId: { type: string, format: uuid }
+                lap: { type: integer, default: 1 }
+                passedAt: { type: string, format: date-time }
+      responses: { '201': { description: Registrado } }
+  /api/v1/admin/devices:
+    get:
+      tags: [Administración]
+      summary: Dispositivos con su asignación y último estado (batería, señal, último contacto)
+      security: [{ session: [] }]
+      responses: { '200': { description: OK } }
+    post:
+      tags: [Administración]
+      summary: Registra un dispositivo. Devuelve el token **una sola vez**.
+      security: [{ session: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [serial]
+              properties:
+                serial: { type: string, example: TRK-001 }
+                label: { type: string }
+                hardware: { type: string, example: 'XIAO nRF52840 + A7670SA' }
+                firmware: { type: string }
+      responses: { '201': { description: Creado } }
+  /api/v1/admin/devices/{did}:
+    patch:
+      tags: [Administración]
+      summary: Modifica o desactiva un dispositivo
+      security: [{ session: [] }]
+      parameters: [{ name: did, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: OK } }
+    delete:
+      tags: [Administración]
+      summary: Borra un dispositivo sin telemetría (solo administrador)
+      security: [{ session: [] }]
+      parameters: [{ name: did, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: OK } }
+  /api/v1/admin/devices/{did}/rotate-key:
+    post:
+      tags: [Administración]
+      summary: Genera una clave nueva (la anterior deja de funcionar)
+      security: [{ session: [] }]
+      parameters: [{ name: did, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: OK } }
+  /api/v1/admin/devices/{did}/assign:
+    post:
+      tags: [Administración]
+      summary: Asocia el dispositivo a un participante
+      security: [{ session: [] }]
+      parameters: [{ name: did, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [participantId], properties: { participantId: { type: string, format: uuid } } }
+      responses: { '200': { description: OK } }
+  /api/v1/admin/devices/{did}/unassign:
+    post:
+      tags: [Administración]
+      summary: Desasocia el dispositivo
+      security: [{ session: [] }]
+      parameters: [{ name: did, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: OK } }
+  /api/v1/admin/races/{id}/live:
+    get:
+      tags: [Administración]
+      summary: Instantánea en vivo con datos de administración (serie de dispositivo, FC privada)
+      security: [{ session: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      responses: { '200': { description: OK } }
+  /api/v1/admin/races/{id}/positions:
+    get:
+      tags: [Administración]
+      summary: Últimas posiciones recibidas (con marcas de calidad)
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/id' }
+        - { name: participantId, in: query, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, default: 200, maximum: 1000 } }
+        - { name: flagged, in: query, schema: { type: boolean } }
+      responses: { '200': { description: OK } }
+  /api/v1/admin/races/{id}/stats:
+    get:
+      tags: [Administración]
+      summary: Estadísticas de telemetría por participante
+      security: [{ session: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      responses: { '200': { description: OK } }
+  /api/v1/admin/races/{id}/export:
+    get:
+      tags: [Administración]
+      summary: Exporta resultados, clasificación, posiciones o pasos (CSV o JSON)
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/id' }
+        - { name: type, in: query, required: true, schema: { type: string, enum: [results, standings, positions, passings] } }
+        - { name: format, in: query, schema: { type: string, enum: [csv, json], default: csv } }
+      responses: { '200': { description: Archivo } }
+  /api/v1/admin/demo/status:
+    get:
+      tags: [Administración]
+      summary: Estado del simulador DEMO
+      security: [{ session: [] }]
+      responses: { '200': { description: OK } }
+  /api/v1/admin/demo/{action}:
+    post:
+      tags: [Administración]
+      summary: Controla el simulador DEMO (start, pause, resume, reset, speed, loop)
+      security: [{ session: [] }]
+      parameters:
+        - { name: action, in: path, required: true, schema: { type: string, enum: [start, pause, resume, reset, speed, loop] } }
+      responses: { '200': { description: OK } }
+  /api/v1/admin/users:
+    get:
+      tags: [Administración]
+      summary: Usuarios (solo administrador)
+      security: [{ session: [] }]
+      responses: { '200': { description: OK } }
+    post:
+      tags: [Administración]
+      summary: Crea un usuario (solo administrador)
+      security: [{ session: [] }]
+      responses: { '201': { description: Creado } }
+  /api/v1/admin/audit:
+    get:
+      tags: [Administración]
+      summary: Registro de auditoría (solo administrador)
+      security: [{ session: [] }]
+      responses: { '200': { description: OK } }
+
+components:
+  securitySchemes:
+    deviceToken:
+      type: http
+      scheme: bearer
+      description: 'Token del dispositivo: `<serial>.<secreto>` (se muestra una sola vez al registrarlo)'
+    session:
+      type: apiKey
+      in: cookie
+      name: session
+  parameters:
+    slug: { name: slug, in: path, required: true, schema: { type: string } }
+    id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error: { type: string }
+              message: { type: string }
+              details: {}
+    TelemetryResult:
+      description: Resultado del procesamiento del lote
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              accepted: { type: integer }
+              duplicates: { type: integer }
+              rejected:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    index: { type: integer }
+                    reason:
+                      type: string
+                      description: |
+                        invalid:<campo>, device_mismatch, device_not_assigned, race_mismatch,
+                        participant_mismatch, simulated_in_official_race, race_closed,
+                        timestamp_in_future, timestamp_too_old, invalid_coordinates,
+                        no_gnss_fix, empty_message
+              serverTime: { type: string, format: date-time, description: Hora del servidor para corregir el reloj del dispositivo }
+  schemas:
+    TelemetryMessage:
+      type: object
+      required: [ts]
+      properties:
+        v: { type: integer, enum: [1], description: Versión del formato }
+        device_id: { type: string, description: 'Opcional; si se envía debe coincidir con el serial autenticado' }
+        race_id: { type: string, format: uuid, description: Opcional; se verifica contra la asignación }
+        participant_id: { type: string, format: uuid, description: Opcional; se verifica contra la asignación }
+        seq: { type: integer, description: Contador monótono del dispositivo (diagnóstico) }
+        ts: { oneOf: [{ type: string, format: date-time }, { type: integer, description: ms epoch }], description: Instante UTC de la medida (no del envío) }
+        lat: { type: number, minimum: -90, maximum: 90 }
+        lon: { type: number, minimum: -180, maximum: 180 }
+        alt_m: { type: number }
+        speed_kmh: { type: number, minimum: 0, maximum: 150, description: Velocidad sobre el suelo del GNSS }
+        heading_deg: { type: number, minimum: 0, maximum: 360 }
+        fix:
+          type: object
+          properties:
+            valid: { type: boolean, description: 'false → la posición se descarta' }
+            sats: { type: integer }
+            hdop: { type: number, description: 'HDOP > 10 → posición descartada' }
+        hr_bpm: { type: integer, minimum: 25, maximum: 250 }
+        hr_source: { type: string, enum: ['ant+', ble, unknown] }
+        battery_pct: { type: number, minimum: 0, maximum: 100 }
+        rssi_dbm: { type: integer, minimum: -140, maximum: 0 }
+        network: { type: string, example: LTE }
+      example:
+        v: 1
+        device_id: TRK-001
+        seq: 1842
+        ts: '2026-10-25T14:03:22.000Z'
+        lat: 18.44972
+        lon: -69.60615
+        alt_m: 12.5
+        speed_kmh: 38.4
+        heading_deg: 92
+        fix: { valid: true, sats: 11, hdop: 0.9 }
+        hr_bpm: 152
+        hr_source: 'ant+'
+        battery_pct: 81
+        rssi_dbm: -79
+        network: LTE
+    RaceSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        location: { type: string }
+        mode: { type: string, enum: [official, demo] }
+        status: { type: string, enum: [scheduled, live, finished, cancelled] }
+        scheduledStart: { type: string, format: date-time, nullable: true }
+        startedAt: { type: string, format: date-time, nullable: true }
+        laps: { type: integer }
+        routeLengthM: { type: number, nullable: true }
+        participantCount: { type: integer }
+    RaceInput:
+      type: object
+      properties:
+        name: { type: string }
+        slug: { type: string }
+        description: { type: string }
+        location: { type: string }
+        discipline: { type: string, enum: [cycling_road, cycling_circuit, cycling_tt, triathlon] }
+        mode: { type: string, enum: [official, demo] }
+        status: { type: string, enum: [draft, scheduled, cancelled] }
+        scheduledStart: { type: string, format: date-time }
+        laps: { type: integer, minimum: 1 }
+        allowEstimatedGaps: { type: boolean }
+    ParticipantInput:
+      type: object
+      required: [bib, firstName, lastName, countryCode]
+      properties:
+        bib: { type: integer }
+        firstName: { type: string }
+        lastName: { type: string }
+        team: { type: string }
+        countryCode: { type: string, description: ISO 3166-1 alfa-2 (se aceptan también códigos COI de 3 letras habituales) }
+        categoryCode: { type: string }
+        startTime: { type: string, format: date-time, description: Salida individual (contrarreloj) }
+        hasHrSensor: { type: boolean }
+        publicHr: { type: boolean, description: Consentimiento para publicar la FC }
+        email: { type: string }
+        phone: { type: string }
+        emergencyContact: { type: string }
+    Gap:
+      type: object
+      properties:
+        ms: { type: integer, nullable: true }
+        method: { type: string, enum: [finish, checkpoint, estimated], nullable: true }
+        reference: { type: string, description: Punto de control de referencia }
+        reason: { type: string, enum: [leader, no_reference, not_racing] }
+    LiveRow:
+      type: object
+      properties:
+        participantId: { type: string }
+        bib: { type: integer }
+        position: { type: integer, nullable: true }
+        status: { type: string, enum: [registered, dns, racing, finished, dnf, dsq] }
+        firstName: { type: string }
+        lastName: { type: string }
+        team: { type: string }
+        countryCode: { type: string }
+        categoryCode: { type: string, nullable: true }
+        elapsedMs: { type: integer, nullable: true }
+        progress: { type: number, nullable: true, description: Metros recorridos sobre el recorrido }
+        gapLeader: { $ref: '#/components/schemas/Gap' }
+        gapPrev: { $ref: '#/components/schemas/Gap' }
+        distanceToPrevM: { type: number, nullable: true, description: Distancia en línea recta al anterior }
+        courseDistanceToPrevM: { type: number, nullable: true, description: Distancia sobre el recorrido al anterior }
+        speedKmh: { type: number, nullable: true }
+        speedSource: { type: string, enum: [device, estimated], nullable: true }
+        freshness: { type: string, enum: [live, delayed, stale, lost, none] }
+        lastFixAt: { type: string, format: date-time, nullable: true }
+        location: { type: object, nullable: true, properties: { lat: { type: number }, lon: { type: number }, heading: { type: number } } }
+        hr: { type: object, nullable: true, properties: { bpm: { type: integer }, at: { type: string } } }
+        hrState: { type: string, enum: [ok, no_sensor, no_data, stale, private] }
+        device: { type: object, nullable: true, properties: { battery: { type: number }, rssi: { type: integer }, network: { type: string }, lastSeenAt: { type: string } } }
+    LiveSnapshot:
+      type: object
+      properties:
+        race: { type: object }
+        clock:
+          type: object
+          properties:
+            now: { type: string, format: date-time, description: Hora de carrera (simulada en DEMO) }
+            rate: { type: number, description: Velocidad del reloj (1 = tiempo real) }
+            running: { type: boolean }
+        checkpoints: { type: array, items: { type: object } }
+        rows: { type: array, items: { $ref: '#/components/schemas/LiveRow' } }
+        generatedAt: { type: string, format: date-time }
