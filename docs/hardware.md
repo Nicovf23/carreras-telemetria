@@ -68,9 +68,42 @@ necesita Wi‑Fi; añadirlo junto al nRF52840 duplica consumo y complejidad sin 
 | 4 | Registro en red LTE con SIM local en la zona de carrera | `AT+CPIN?`, `AT+CSQ`, `AT+CEREG?`, `AT+CPSI?` | ❌ Pendiente |
 | 5 | Envío HTTPS desde el módulo | `AT+HTTPINIT`, `AT+HTTPPARA="URL",…`, `AT+HTTPPARA="USERDATA","Authorization: Bearer …"`, `AT+HTTPDATA`, `AT+HTTPACTION=1` (comprobar soporte TLS y CA en la versión de firmware) | ❌ Pendiente |
 | 6 | Fix GNSS y precisión en movimiento | Registrar NMEA en bicicleta; comparar con un ciclocomputador | ❌ Pendiente |
-| 7 | Lectura de FC por BLE (Heart Rate Service 0x180D) | Ejemplo `central_hrm` de Adafruit/Seeed nRF52 core | ❌ Pendiente |
+| 7 | Lectura de FC por BLE (Heart Rate Service 0x180D) | Ejemplo `central_hrm` de Adafruit/Seeed nRF52 core | ⚠️ Placa y escaneo BLE OK; no hay sensor BLE disponible (el actual es solo ANT+) |
 | 8 | Lectura de FC por ANT+ (perfil HRM, canal esclavo, red ANT+ 57 = 2457 MHz) | nRF5 SDK + S340, ejemplo `ant_hrm_rx` (licencia de evaluación) | ❌ Pendiente |
 | 9 | Consumo y autonomía (objetivo ≥ 5 h) | Medir con PPK2 o multímetro con registro | ❌ Pendiente |
+
+## 3 bis. Resultados de banco (14 nov 2026)
+
+* **XIAO nRF52840 Sense verificado.** USB `2886:8045`; bootloader *UF2 Bootloader 0.6.1*,
+  *SoftDevice S140 7.3.0* (solo Bluetooth), *Board-ID Seeed_XIAO_nRF52840_Sense*. Programado con
+  `arduino-cli` + núcleo `Seeeduino:nrf52` 1.1.13 ([firmware/xiao-prueba](../firmware/xiao-prueba)):
+  LED, puerto serie y escaneo BLE funcionan (~20 anuncios/s recibidos).
+  * Para entrar en modo de carga: doble pulsación rápida de RST → unidad `XIAO-SENSE`.
+  * Con el Python de la Microsoft Store la compilación falla en el paso opcional UF2; se omite con
+    `--build-property "recipe.objcopy.uf2.pattern=cmd /c rem"`.
+* **Sensor de FC disponible: solo ANT+.** No aparece en el escaneo BLE, como era de esperar.
+
+### Ruta ANT+ en el XIAO (no probada aún)
+
+Ninguna fuente pública confirma de extremo a extremo la recepción de una banda ANT+ en un XIAO con
+el núcleo de Seeed. Lo más cercano (foro de Seeed, 2024–2026) indica:
+
+1. Hace falta sustituir la SoftDevice **S140 por S340** (ANT + BLE) **y** el bootloader por uno
+   compilado para S340 (Adafruit nRF52 Bootloader 0.11 con `SD_NAME=s340`). Grabar solo la
+   SoftDevice deja la placa sin poder cargar programas.
+2. Se recomienda un **programador SWD** (J‑Link EDU Mini, nRF52840‑DK o una Raspberry Pi Pico con
+   *debugprobe*): si la actualización por USB se interrumpe, solo se recupera por SWD.
+3. La S340 se descarga de Garmin aceptando el *ANT+ Adopter Agreement*; su clave de evaluación es
+   **solo para uso no comercial**. La clave de red ANT+ no debe subirse al repositorio.
+4. Ajustar el *linker* del núcleo: `FLASH ORIGIN = 0x31000`, `RAM ORIGIN = 0x20004000,
+   LENGTH = 0x3C000` (valores comunicados en el foro para S340 7.0.1; otro usuario solo lo logró
+   con S340 6.1.1).
+5. Código de recepción de referencia: canal esclavo ANT, tipo de dispositivo 120, RF 57
+   (2457 MHz), periodo 8070; la FC está en el byte 7 de cada página de datos.
+
+Fuentes: [ant-plus-connector](https://github.com/danyarmarkin/ant-plus-connector),
+[SDAntplus](https://github.com/orrmany/SDAntplus),
+[foro de Seeed: S340 en XIAO](https://forum.seeedstudio.com/t/assistance-needed-loading-softdevice-s340-onto-seeed-xiao-ble-sense-nrf52840-board/275100).
 
 ## 4. Contrato con la plataforma (ya implementado en el servidor)
 

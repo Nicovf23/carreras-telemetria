@@ -1,0 +1,5 @@
+// Copia este archivo como ant_plus_key.h y pon la clave de red ANT+ que obtienes al
+// registrarte como ANT+ Adopter en https://www.thisisant.com (8 bytes).
+// ant_plus_key.h está en .gitignore: la clave NUNCA debe subirse al repositorio.
+#pragma once
+#define ANT_PLUS_NETWORK_KEY {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}

@@ -4,3 +4,7 @@ dist/
 data/
 *.log
 coverage/
+
+# Claves ANT+ (red y licencia): nunca al repositorio
+ant_plus_key.h
+firmware/**/build/
