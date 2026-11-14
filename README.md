@@ -77,6 +77,28 @@ cambiar la velocidad o borrar los datos simulados.
 
 Para empezar de cero con PGlite, detén el servidor y borra la carpeta `data/`.
 
+## Desplegar en Railway (recomendado: datos persistentes)
+
+[`railway.json`](railway.json) ya define el build (`npm ci --include=dev && npm run build`), el
+arranque (`npm start`) y la comprobación de salud (`/api/health`).
+
+1. En https://railway.com → **New Project → Deploy from GitHub repo** → elige este repositorio.
+2. En el servicio → **Settings → Volumes → + Add Volume** con *Mount path* `/data`. Ahí se guarda la
+   base de datos (PGlite), así que carreras, dispositivos y tokens sobreviven a reinicios.
+3. **Variables** (Raw Editor):
+
+   ```
+   NODE_ENV=production
+   PGLITE_DIR=/data/pglite
+   JWT_SECRET=<48+ caracteres aleatorios>
+   ADMIN_EMAIL=<tu correo>
+   ADMIN_PASSWORD=<mínimo 10 caracteres>
+   DEMO_SEED=true
+   DEMO_AUTOSTART=true
+   ```
+
+4. **Settings → Networking → Generate Domain** → URL pública `https://<nombre>.up.railway.app`.
+
 ## Desplegar en Render
 
 Un solo **Web Service** sirve la API y la web compilada. La forma más sencilla:
