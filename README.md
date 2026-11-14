@@ -17,7 +17,7 @@ ruta (preparada para ampliarse a triatlón). Proyecto Final de Carrera de Teleco
 
 ## Requisitos (Windows)
 
-* **Node.js 20 o superior** (probado con Node 24): https://nodejs.org → instalador LTS.
+* **Node.js 22.12 o superior** (probado con Node 22 y 24): https://nodejs.org → instalador LTS.
 * **Git** (opcional, para clonar).
 * No hace falta instalar PostgreSQL: por defecto se usa **PGlite** (PostgreSQL embebido). Para usar
   un PostgreSQL real, ver más abajo.
@@ -79,7 +79,8 @@ Para empezar de cero con PGlite, detén el servidor y borra la carpeta `data/`.
 
 ## Desplegar en Railway (recomendado: datos persistentes)
 
-[`railway.json`](railway.json) ya define el build (`npm ci --include=dev && npm run build`), el
+[`railway.json`](railway.json) ya define el build (`npm install --include=dev && npm run build`;
+`npm ci` falla en Railway porque la caché `node_modules/.vite` está montada), el
 arranque (`npm start`) y la comprobación de salud (`/api/health`).
 
 1. En https://railway.com → **New Project → Deploy from GitHub repo** → elige este repositorio.
