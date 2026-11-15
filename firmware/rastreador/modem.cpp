@@ -79,6 +79,19 @@ bool Modem::begin(bool &swapped, uint32_t timeoutMs) {
   return false;
 }
 
+bool Modem::ensureGnss() {
+  String r;
+  if (!cmd("AT+CGNSSPWR?", 2000, &r) || r.indexOf("+CGNSSPWR: 0") < 0) return false;
+  cmd("ATE0");
+  cmd("AT+CGNSSPWR=1", 3000);
+  waitFor("+CGNSSPWR: READY!", 15000, nullptr);
+  // La configuración TLS también se pierde con el reinicio
+  cmd("AT+CSSLCFG=\"sslversion\",0,4");
+  cmd("AT+CSSLCFG=\"authmode\",0,0");
+  cmd("AT+CSSLCFG=\"enableSNI\",0,1");
+  return true;
+}
+
 bool Modem::registered() {
   String r;
   if (!cmd("AT+CEREG?", 2000, &r)) return false;

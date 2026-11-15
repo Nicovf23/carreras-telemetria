@@ -216,6 +216,14 @@ void loop() {
     else lastFix.valid = false;
   }
 
+  // Si el módem se reinicia (p. ej. un power bank que no da 2 A), arranca con el GNSS
+  // apagado y el eco activo. Sin fix, se comprueba cada minuto y se restablece.
+  static uint32_t lastGnssCheck = 0;
+  if (!lastFix.valid && now - lastGnssCheck >= 60000) {
+    lastGnssCheck = now;
+    if (modem.ensureGnss()) Serial.println("[gps] el modem se habia reiniciado: GNSS reactivado");
+  }
+
   if (now - lastNetAt >= 10000) {
     lastNetAt = now;
     netOk = modem.registered();

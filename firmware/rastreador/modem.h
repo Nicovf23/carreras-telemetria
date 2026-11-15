@@ -29,6 +29,8 @@ class Modem {
   /** Envía un comando y espera `expect` (o ERROR). Las líneas recibidas quedan en `resp`. */
   bool cmd(const String &c, uint32_t timeoutMs = 2000, String *resp = nullptr, const char *expect = "OK");
   bool registered();
+  /** Enciende el GNSS (y quita el eco) si el módem se reinició. Devuelve true si tuvo que hacerlo. */
+  bool ensureGnss();
   int rssiDbm();  // INT16_MIN si se desconoce
   bool readGnss(GnssFix &fix);
   /**
