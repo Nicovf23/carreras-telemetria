@@ -1,5 +1,5 @@
 import L from 'leaflet';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CircleMarker, MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet';
 import { riderColor } from '../lib/format';
 import type { Checkpoint, LiveRow } from '../lib/types';
@@ -39,6 +39,26 @@ function FitRoute({ route }: { route: [number, number][] }) {
     }, 50);
     return () => clearTimeout(t);
   }, [map, route]);
+  return null;
+}
+
+/**
+ * Sin recorrido cargado, encuadra a los ciclistas la primera vez que hay posiciones
+ * (después el usuario mueve el mapa libremente).
+ */
+function FitRiders({ points }: { points: [number, number][] }) {
+  const map = useMap();
+  const done = useRef(false);
+  useEffect(() => {
+    if (done.current || points.length === 0) return;
+    done.current = true;
+    const t = setTimeout(() => {
+      map.invalidateSize();
+      if (points.length === 1) map.setView(points[0], 15);
+      else map.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 16 });
+    }, 50);
+    return () => clearTimeout(t);
+  }, [map, points]);
   return null;
 }
 
@@ -109,6 +129,9 @@ export function RaceMap({
     <div className={`relative overflow-hidden rounded-xl ${className}`}>
       <MapContainer center={center} zoom={12} className="h-full w-full" preferCanvas={false} zoomControl={false} attributionControl>
         <TileLayer key={layer} url={tl.url} attribution={tl.attribution} maxZoom={tl.maxZoom} className={layer === 'dark' ? 'tiles-dark' : ''} />
+        {routeMemo.length < 2 && (
+          <FitRiders points={rows.filter((r) => r.location).map((r) => [r.location!.lat, r.location!.lon] as [number, number])} />
+        )}
         {routeMemo.length > 1 && (
           <>
             <FitRoute route={routeMemo} />
