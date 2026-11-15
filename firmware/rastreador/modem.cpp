@@ -120,6 +120,20 @@ static double parseCoord(const String &v, bool isLat) {
   return x;
 }
 
+/**
+ * Campo numérico dentro de un rango físico plausible; si está vacío, no es un número
+ * o está fuera de rango, se devuelve MISSING (no se inventa ni se envía).
+ */
+static float field(const String &v, float lo, float hi, float scale = 1.0f) {
+  if (!v.length()) return MISSING;
+  for (unsigned i = 0; i < v.length(); i++) {
+    char c = v[i];
+    if (!(isdigit(c) || c == '.' || c == '-' || c == '+')) return MISSING;
+  }
+  float x = v.toFloat() * scale;
+  return (x >= lo && x <= hi) ? x : MISSING;
+}
+
 bool Modem::readGnss(GnssFix &fix) {
   String r;
   fix.valid = false;
@@ -159,10 +173,10 @@ bool Modem::readGnss(GnssFix &fix) {
   int64_t days = daysFromCivil(2000 + yy, mo, dd);
   fix.utcMs = (uint64_t)((days * 86400 + hh * 3600 + mi * 60) * 1000) + (uint64_t)(ss * 1000);
 
-  fix.altM = tok[ns + 5].length() ? tok[ns + 5].toFloat() : NAN;
-  fix.speedKmh = tok[ns + 6].length() ? tok[ns + 6].toFloat() * 1.852f : NAN;  // nudos → km/h
-  fix.courseDeg = (ns + 7 < n && tok[ns + 7].length()) ? tok[ns + 7].toFloat() : NAN;
-  fix.hdop = (ns + 9 < n && tok[ns + 9].length()) ? tok[ns + 9].toFloat() : NAN;
+  fix.altM = field(tok[ns + 5], -500, 9000);
+  fix.speedKmh = field(tok[ns + 6], 0, 150, 1.852f);  // nudos → km/h
+  fix.courseDeg = ns + 7 < n ? field(tok[ns + 7], 0, 360) : MISSING;
+  fix.hdop = ns + 9 < n ? field(tok[ns + 9], 0, 99) : MISSING;
   uint8_t sats = 0;
   for (int k = 1; k < ns - 1; k++) sats += tok[k].toInt();
   fix.sats = sats;

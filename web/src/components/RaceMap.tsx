@@ -51,14 +51,28 @@ function FitRiders({ points }: { points: [number, number][] }) {
   const done = useRef(false);
   useEffect(() => {
     if (done.current || points.length === 0) return;
-    done.current = true;
+    // La página se redibuja varias veces por segundo: se marca como hecho dentro del
+    // temporizador, para que una limpieza del efecto no cancele el encuadre para siempre.
     const t = setTimeout(() => {
+      done.current = true;
       map.invalidateSize();
       if (points.length === 1) map.setView(points[0], 15);
       else map.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 16 });
     }, 50);
     return () => clearTimeout(t);
   }, [map, points]);
+  return null;
+}
+
+/** Recalcula el tamaño del mapa cuando cambia su contenedor (evita el mapa en una franja). */
+function KeepSized() {
+  const map = useMap();
+  useEffect(() => {
+    const el = map.getContainer();
+    const ro = new ResizeObserver(() => map.invalidateSize());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [map]);
   return null;
 }
 
@@ -129,6 +143,7 @@ export function RaceMap({
     <div className={`relative overflow-hidden rounded-xl ${className}`}>
       <MapContainer center={center} zoom={12} className="h-full w-full" preferCanvas={false} zoomControl={false} attributionControl>
         <TileLayer key={layer} url={tl.url} attribution={tl.attribution} maxZoom={tl.maxZoom} className={layer === 'dark' ? 'tiles-dark' : ''} />
+        <KeepSized />
         {routeMemo.length < 2 && (
           <FitRiders points={rows.filter((r) => r.location).map((r) => [r.location!.lat, r.location!.lon] as [number, number])} />
         )}

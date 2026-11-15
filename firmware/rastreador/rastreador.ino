@@ -70,7 +70,6 @@ static int batteryPct() {
   return constrain((int)((v - 3.30f) / (4.15f - 3.30f) * 100.0f), 0, 100);
 }
 
-static String num(double v, int dec) { return isnan(v) ? String("") : String(v, dec); }
 
 /** Un mensaje de telemetría v1 (ver docs/api-telemetria.md). */
 static String sampleJson(const Sample &s, int battery) {
@@ -86,11 +85,11 @@ static String sampleJson(const Sample &s, int battery) {
   } while (v);
   j += ",\"ts\":" + String(p);
   j += ",\"lat\":" + String(s.lat, 6) + ",\"lon\":" + String(s.lon, 6);
-  if (!isnan(s.altM)) j += ",\"alt_m\":" + num(s.altM, 1);
-  if (!isnan(s.speedKmh)) j += ",\"speed_kmh\":" + num(s.speedKmh, 1);
-  if (!isnan(s.courseDeg)) j += ",\"heading_deg\":" + num(s.courseDeg, 0);
+  if (has(s.altM)) j += ",\"alt_m\":" + String(s.altM, 1);
+  if (has(s.speedKmh)) j += ",\"speed_kmh\":" + String(s.speedKmh, 1);
+  if (has(s.courseDeg)) j += ",\"heading_deg\":" + String(s.courseDeg, 0);
   j += ",\"fix\":{\"valid\":true,\"sats\":" + String(s.sats);
-  if (!isnan(s.hdop)) j += ",\"hdop\":" + num(s.hdop, 1);
+  if (has(s.hdop)) j += ",\"hdop\":" + String(s.hdop, 1);
   j += "}";
   if (s.hrBpm > 0) j += ",\"hr_bpm\":" + String(s.hrBpm) + ",\"hr_source\":\"ant+\"";
   if (s.powerW >= 0) j += ",\"power_w\":" + String(s.powerW);
@@ -121,6 +120,12 @@ static void sendBatch() {
     sentOk += n;
     backoffMs = 0;
     led(false, true, false);
+  } else if (code == 400) {
+    // Lote mal formado: reintentarlo nunca funcionaría y bloquearía la cola. Se descarta.
+    bufHead = (bufHead + n) % BUF_CAP;
+    bufCount -= n;
+    dropped += n;
+    led(true, false, false);
   } else {
     // 401: token incorrecto · 409: dispositivo aún sin asignar a un ciclista ·
     // 429/5xx/negativo: fallo temporal. En todos se conservan los datos y se reintenta.
@@ -130,6 +135,7 @@ static void sendBatch() {
   Serial.printf("[envio] %u muestras -> HTTP %d · pendientes %u%s\n", (unsigned)n, code, (unsigned)bufCount,
                 code == 401   ? " (token no valido: revisa 'token')"
                 : code == 409 ? " (dispositivo sin asignar: asignalo a un ciclista en el panel)"
+                : code == 400 ? " (lote mal formado: descartado; usa 'json' para revisarlo)"
                               : "");
 }
 
