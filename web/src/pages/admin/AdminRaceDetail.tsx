@@ -604,7 +604,8 @@ function ParticipantsTab({ detail }: { detail: Detail }) {
                 <th className="px-3 py-2">FC</th>
                 <th className="px-3 py-2">Dispositivo</th>
                 <th className="px-3 py-2">Estado</th>
-                <th className="px-3 py-2" />
+                {/* Acciones fijas a la derecha: visibles aunque la tabla sea más ancha que la pantalla */}
+                <th className="sticky right-0 bg-white px-3 py-2 text-right dark:bg-ink-850">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -612,7 +613,9 @@ function ParticipantsTab({ detail }: { detail: Detail }) {
                 <tr key={p.id} className="border-b border-slate-100 dark:border-ink-800">
                   <td className="tnum px-3 py-2 font-semibold">{p.bib}</td>
                   <td className="px-3 py-2">
-                    {p.firstName} {p.lastName}
+                    <button className="text-left font-medium hover:text-brand-500 hover:underline" onClick={() => setEditing(p)} title="Editar participante">
+                      {p.firstName} {p.lastName} <span className="muted text-xs">✎</span>
+                    </button>
                     {p.email && <div className="muted text-xs">{p.email}</div>}
                   </td>
                   <td className="px-3 py-2">
@@ -633,7 +636,7 @@ function ParticipantsTab({ detail }: { detail: Detail }) {
                       ))}
                     </select>
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right">
+                  <td className="sticky right-0 whitespace-nowrap bg-white px-3 py-2 text-right shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.3)] dark:bg-ink-850">
                     {race.startedAt && (
                       <button className="btn-ghost px-2 py-1 text-xs" onClick={() => setPassing(p)}>
                         Paso manual
