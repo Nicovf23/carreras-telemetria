@@ -75,9 +75,16 @@ static String num(double v, int dec) { return isnan(v) ? String("") : String(v, 
 /** Un mensaje de telemetría v1 (ver docs/api-telemetria.md). */
 static String sampleJson(const Sample &s, int battery) {
   String j = "{\"v\":1,\"device_id\":\"" + configSerial() + "\"";
+  // El printf del núcleo (newlib-nano) no admite %llu: el entero de 64 bits se convierte a mano.
   char ts[24];
-  snprintf(ts, sizeof(ts), "%llu", (unsigned long long)s.utcMs);
-  j += ",\"ts\":" + String(ts);
+  char *p = ts + sizeof(ts) - 1;
+  *p = '\0';
+  uint64_t v = s.utcMs;
+  do {
+    *--p = char('0' + v % 10);
+    v /= 10;
+  } while (v);
+  j += ",\"ts\":" + String(p);
   j += ",\"lat\":" + String(s.lat, 6) + ",\"lon\":" + String(s.lon, 6);
   if (!isnan(s.altM)) j += ",\"alt_m\":" + num(s.altM, 1);
   if (!isnan(s.speedKmh)) j += ",\"speed_kmh\":" + num(s.speedKmh, 1);
@@ -147,6 +154,7 @@ static void handleConsole() {
     if (!line.length()) continue;
     if (line.startsWith("AT") || line.startsWith("at")) modem.passthrough(line);
     else if (line == "estado") printStatus();
+    else if (line == "json") Serial.println(bufCount ? sampleJson(buf[bufHead], batteryPct()) : String("(bufer vacio)"));
     else if (!configCommand(line)) Serial.println("Comandos: token <SERIE.SECRETO> · url <https://…/api/v1/telemetry> · muestreo <s> · envio <s> · bateria si|no · config · estado · borrar · AT…");
     line = "";
   }
