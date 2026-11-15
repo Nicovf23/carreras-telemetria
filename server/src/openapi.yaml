@@ -247,6 +247,13 @@ paths:
       security: [{ session: [] }]
       parameters: [{ $ref: '#/components/parameters/id' }]
       responses: { '200': { description: OK } }
+  /api/v1/admin/races/{id}/restart:
+    post:
+      tags: [Administración]
+      summary: Reinicia la salida (cronómetro a 0 ahora); borra pasos y resultados, conserva posiciones como historial
+      security: [{ session: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      responses: { '200': { description: OK }, '403': { $ref: '#/components/responses/Error' }, '409': { $ref: '#/components/responses/Error' } }
   /api/v1/admin/races/{id}/reopen:
     post:
       tags: [Administración]

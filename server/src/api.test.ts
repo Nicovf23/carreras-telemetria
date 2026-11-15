@@ -232,6 +232,23 @@ describe('flujo de carrera oficial', () => {
     expect(r.statusCode).toBe(400);
   });
 
+  it('reiniciar la salida pone el cronómetro a 0 y borra los pasos anteriores', async () => {
+    const before = (await app.inject({ method: 'GET', url: `/api/v1/races/${await slug()}/live` })).json();
+    expect(before.rows[0].lastCheckpoint?.name).toBe('Km 3');
+    const r = await app.inject({ method: 'POST', url: `/api/v1/admin/races/${raceId}/restart`, headers: H() });
+    expect(r.statusCode).toBe(200);
+    const newStart = Date.parse(r.json().race.startedAt);
+    expect(Date.now() - newStart).toBeLessThan(5000);
+    const after = (await app.inject({ method: 'GET', url: `/api/v1/races/${await slug()}/live` })).json();
+    for (const row of after.rows) {
+      expect(row.lastCheckpoint).toBeNull();
+      expect(row.elapsedMs).toBeLessThan(5000);
+      expect(row.status).toBe('racing');
+    }
+    // Las pruebas siguientes cuentan con la salida original
+    startedAt = newStart;
+  });
+
   it('el paso manual por meta finaliza al participante y el cierre publica resultados', async () => {
     const detail = (await app.inject({ method: 'GET', url: `/api/v1/admin/races/${raceId}`, headers: H() })).json();
     const finish = detail.checkpoints.find((c: { kind: string }) => c.kind === 'finish');
@@ -253,6 +270,9 @@ describe('flujo de carrera oficial', () => {
     // Un organizador no puede modificar una carrera finalizada
     const edit = await app.inject({ method: 'PATCH', url: `/api/v1/admin/races/${raceId}`, headers: H(), payload: { name: 'Otro nombre' } });
     expect(edit.statusCode).toBe(403);
+    // …ni reiniciar su salida (solo un administrador)
+    const restart = await app.inject({ method: 'POST', url: `/api/v1/admin/races/${raceId}/restart`, headers: H() });
+    expect(restart.statusCode).toBe(403);
   });
 
   it('exporta CSV con protección contra inyección de fórmulas', async () => {

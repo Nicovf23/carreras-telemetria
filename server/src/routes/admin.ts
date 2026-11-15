@@ -354,6 +354,38 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return { race: await getRace(db, race.id) };
   });
 
+  /**
+   * Reinicia la salida: el cronómetro vuelve a 0 en este instante, sea cual sea la hora
+   * programada o una salida anterior. Borra pasos por puntos de control y resultados; las
+   * posiciones GPS se conservan como historial, pero solo cuentan las posteriores a la nueva
+   * salida. Los participantes en carrera, en meta o retirados vuelven a "en carrera"
+   * (DNS y DSQ se mantienen). Una carrera finalizada solo la puede reiniciar un administrador.
+   */
+  app.post('/races/:id/restart', async (req) => {
+    const race = await raceParam(req);
+    if (race.mode === 'demo') throw badRequest('Las carreras DEMO se reinician desde los controles del simulador');
+    if (race.status !== 'live' && race.status !== 'finished') throw conflict('La carrera aún no ha empezado: usa «Dar la salida»');
+    if (race.status === 'finished' && req.user!.role !== 'admin') throw forbidden('Solo un administrador puede reiniciar una carrera finalizada');
+    const at = new Date().toISOString();
+    await db.transaction(async (tx) => {
+      await tx.query('DELETE FROM checkpoint_passings WHERE race_id = $1', [race.id]);
+      await tx.query('DELETE FROM results WHERE race_id = $1', [race.id]);
+      await tx.query(
+        `UPDATE participants SET status = 'racing', finished_at = NULL
+          WHERE race_id = $1 AND status IN ('registered', 'racing', 'finished', 'dnf')`,
+        [race.id],
+      );
+      await tx.query(`UPDATE races SET status = 'live', started_at = $2, finished_at = NULL, updated_at = now() WHERE id = $1`, [
+        race.id,
+        at,
+      ]);
+    });
+    await audit(db, uid(req), 'race.restart', 'race', race.id, { previousStart: race.startedAt, at });
+    live.unload(race.id);
+    await live.load(race.id);
+    return { race: await getRace(db, race.id) };
+  });
+
   // ----------------------------------------------------------- Participantes
   app.get('/races/:id/participants', async (req) => {
     const race = await raceParam(req);

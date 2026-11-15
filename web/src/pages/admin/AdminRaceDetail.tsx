@@ -109,7 +109,7 @@ function GeneralTab({ detail, reload }: { detail: Detail; reload: () => void }) 
   const race = detail.race;
   const user = useUser();
   const navigate = useNavigate();
-  const [confirm, setConfirm] = useState<null | 'start' | 'finish' | 'reopen' | 'delete'>(null);
+  const [confirm, setConfirm] = useState<null | 'start' | 'finish' | 'reopen' | 'restart' | 'delete'>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const act = async (fn: () => Promise<unknown>, ok: string) => {
@@ -167,6 +167,11 @@ function GeneralTab({ detail, reload }: { detail: Detail; reload: () => void }) 
                 Reabrir carrera
               </button>
             )}
+            {(race.status === 'live' || (race.status === 'finished' && user.role === 'admin')) && (
+              <button className="btn-secondary w-full" onClick={() => setConfirm('restart')}>
+                Reiniciar salida (cronómetro a 0)
+              </button>
+            )}
           </div>
         )}
         <div className="panel space-y-2 p-5">
@@ -183,7 +188,7 @@ function GeneralTab({ detail, reload }: { detail: Detail; reload: () => void }) 
         title="Dar la salida"
         danger={false}
         confirmLabel="Iniciar ahora"
-        message="La hora de salida será la actual. Los participantes inscritos pasarán a «en carrera» y empezará el cronometraje."
+        message="El cronómetro empieza en 0 en este instante, aunque la carrera estuviera programada para otra hora. Los participantes inscritos pasarán a «en carrera»."
         onCancel={() => setConfirm(null)}
         onConfirm={() => act(() => post(`/api/v1/admin/races/${race.id}/start`), 'Carrera iniciada')}
       />
@@ -208,6 +213,21 @@ function GeneralTab({ detail, reload }: { detail: Detail; reload: () => void }) 
         message="Se retirarán los resultados publicados. La acción queda registrada en la auditoría."
         onCancel={() => setConfirm(null)}
         onConfirm={() => act(() => post(`/api/v1/admin/races/${race.id}/reopen`), 'Carrera reabierta')}
+      />
+      <ConfirmDialog
+        open={confirm === 'restart'}
+        title="Reiniciar salida"
+        confirmLabel="Reiniciar ahora"
+        requireText="REINICIAR"
+        message={
+          <>
+            El cronómetro de todos los participantes vuelve a <strong>0 en este instante</strong>, sin importar la hora programada ni la
+            salida anterior. Se borran los pasos por puntos de control y los resultados; quienes estaban en meta o retirados vuelven a
+            «en carrera». Las posiciones GPS anteriores se conservan como historial, pero no cuentan para el nuevo tiempo.
+          </>
+        }
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => act(() => post(`/api/v1/admin/races/${race.id}/restart`), 'Salida reiniciada: el cronómetro empieza en 0')}
       />
       <ConfirmDialog
         open={confirm === 'delete'}

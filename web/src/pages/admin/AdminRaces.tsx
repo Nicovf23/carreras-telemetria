@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { DemoBadge, ErrorBox, Modal, RaceStatusBadge, Spinner } from '../../components/ui';
 import { api, errorMessage, post } from '../../lib/api';
-import { formatDate, formatKm } from '../../lib/format';
+import { formatDate, formatKm, RACE_STATUS_LABEL } from '../../lib/format';
 import type { RaceSummary } from '../../lib/types';
 
 export function RaceForm({
@@ -91,11 +91,16 @@ export function RaceForm({
         </div>
         <div>
           <label className="label" htmlFor="rf-status">Publicación</label>
-          <select id="rf-status" className="input" value={status} onChange={(e) => setStatus(e.target.value as 'draft')} disabled={lifecycleLocked}>
-            <option value="draft">Borrador (no visible)</option>
-            <option value="scheduled">Publicada como próxima</option>
-            <option value="cancelled">Cancelada</option>
-          </select>
+          {lifecycleLocked ? (
+            // En directo o finalizada la publicación la decide el cronometraje, no este campo.
+            <input id="rf-status" className="input" disabled value={`${RACE_STATUS_LABEL[initial!.status!]} (visible al público)`} />
+          ) : (
+            <select id="rf-status" className="input" value={status} onChange={(e) => setStatus(e.target.value as 'draft')}>
+              <option value="draft">Borrador (no visible)</option>
+              <option value="scheduled">Publicada como próxima</option>
+              <option value="cancelled">Cancelada</option>
+            </select>
+          )}
         </div>
       </div>
       <div>
