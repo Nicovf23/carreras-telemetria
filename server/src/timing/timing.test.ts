@@ -71,11 +71,46 @@ describe('CourseModel y detección de pasos', () => {
   });
 
   it('interpola la llegada aunque la posición siguiente esté más allá del final del recorrido', () => {
-    const st = advanceTracker(course, initialTrackerState(), { t: T0, ...route.pointAt(L - 50) }).state;
-    const r = advanceTracker(course, st, { t: T0 + 10_000, ...route.pointAt(L + 50, true) });
+    let st = advanceTracker(course, initialTrackerState(), { t: T0, ...route.pointAt(L - 250) }).state;
+    st = advanceTracker(course, st, { t: T0 + 10_000, ...route.pointAt(L - 50) }).state;
+    const r = advanceTracker(course, st, { t: T0 + 20_000, ...route.pointAt(L + 50, true) });
     expect(r.crossings.map((c) => c.checkpoint.key)).toEqual(['fin:1']);
-    expect(r.crossings[0].passedAt).toBeCloseTo(T0 + 5000, -2);
+    expect(r.crossings[0].passedAt).toBeCloseTo(T0 + 15_000, -2);
     expect(r.state.progress).toBeCloseTo(L, 0);
+  });
+
+  it('un dispositivo quieto junto a la meta no la "cruza" por el error del GPS', () => {
+    // Caso real: rastreador encendido a 17 m de la meta, con unos metros de ruido GNSS.
+    let st = initialTrackerState();
+    const keys: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      const jitter = (i % 2 ? 1 : -1) * 15; // ±15 m a lo largo del recorrido
+      const r = advanceTracker(course, st, { t: T0 + i * 5000, ...route.pointAt(L - 17 + jitter, true) });
+      st = r.state;
+      keys.push(...r.crossings.map((c) => c.checkpoint.key));
+    }
+    expect(keys).toEqual([]);
+  });
+
+  it('trata como circuito un GPX cuya salida y meta quedan a ~124 m y no da llegadas falsas en la salida', () => {
+    // Bucle de ~4 km que no cierra exactamente (como el GPX de la prueba real)
+    const almostLoop: LatLon[] = [...square.slice(0, -1), { lat: 18.4511, lon: -69.6 }];
+    const loop = new RouteModel(almostLoop);
+    expect(loop.isLoop).toBe(true);
+    const c = new CourseModel(loop, 1, [
+      { id: 's', name: 'Salida', kind: 'start', distance: 0 },
+      { id: 'f', name: 'Meta', kind: 'finish', distance: loop.length },
+    ]);
+    let st = initialTrackerState();
+    const keys: string[] = [];
+    // Quieto entre el final del trazado y la salida durante 2 minutos
+    for (let i = 0; i < 24; i++) {
+      const r = advanceTracker(c, st, { t: T0 + i * 5000, lat: 18.4505 + (i % 2 ? 0.00005 : -0.00005), lon: -69.6 });
+      st = r.state;
+      keys.push(...r.crossings.map((x) => x.checkpoint.key));
+    }
+    expect(keys).toEqual([]);
+    expect(st.progress).toBeLessThan(200);
   });
 
   it('no inventa un paso si el hueco entre posiciones es demasiado grande', () => {

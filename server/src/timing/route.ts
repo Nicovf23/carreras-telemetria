@@ -7,6 +7,9 @@ export interface Projection {
   point: LatLon;
 }
 
+/** Distancia máxima entre salida y meta para tratar el recorrido como circuito. */
+export const LOOP_CLOSE_M = 300;
+
 /** Polilínea del recorrido con distancias acumuladas. */
 export class RouteModel {
   readonly points: LatLon[];
@@ -21,7 +24,9 @@ export class RouteModel {
     this.cum = [0];
     for (let i = 1; i < points.length; i++) this.cum.push(this.cum[i - 1] + haversine(points[i - 1], points[i]));
     this.length = this.cum[this.cum.length - 1];
-    this.isLoop = haversine(points[0], points[points.length - 1]) < 50;
+    // Circuito: salida y meta casi en el mismo sitio. Los GPX reales rara vez cierran
+    // exactamente (en una prueba quedaron a 124 m), así que se admite hasta 300 m.
+    this.isLoop = this.length > 2000 && haversine(points[0], points[points.length - 1]) < LOOP_CLOSE_M;
   }
 
   /** Punto a una distancia del inicio. Con `extrapolate`, más allá del final se prolonga el último tramo. */

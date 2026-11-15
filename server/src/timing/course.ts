@@ -65,9 +65,18 @@ export interface TrackerState {
   progress: number;
   /** Última muestra procesada (posición proyectada "cruda", sin máximo). */
   last: { t: number; raw: number; onRoute: boolean } | null;
+  /** Progreso de la primera muestra válida: desde dónde se ha visto avanzar al corredor. */
+  firstRaw: number | null;
 }
 
-export const initialTrackerState = (): TrackerState => ({ progress: 0, last: null });
+export const initialTrackerState = (): TrackerState => ({ progress: 0, last: null, firstRaw: null });
+
+/**
+ * Un paso por un punto de control solo se acepta si el GPS vio al corredor acercarse
+ * desde al menos esta distancia. Evita que un dispositivo quieto junto a la línea
+ * (salida y meta en el mismo sitio, error GNSS de unos metros) "cruce" la meta.
+ */
+export const MIN_APPROACH_M = 100;
 
 export interface Crossing {
   checkpoint: CourseCheckpoint;
@@ -109,15 +118,16 @@ export function advanceTracker(course: CourseModel, state: TrackerState, fix: { 
     let bestK = prevLap;
     let bestDiff = Infinity;
     for (const k of [prevLap - 1, prevLap, prevLap + 1]) {
-      // k = laps solo sirve para alcanzar exactamente la meta (along ≈ 0 tras la última vuelta)
-      if (k < 0 || k > course.laps) continue;
+      // k = laps solo sirve para alcanzar exactamente la meta (along ≈ 0 tras la última vuelta);
+      // k = -1 representa estar "detrás" de la línea de salida antes de empezar (se acota a 0).
+      if (k < -1 || k > course.laps) continue;
       const diff = Math.abs(k * L + proj.along - unwrappedPrev);
       if (diff < bestDiff) {
         bestDiff = diff;
         bestK = k;
       }
     }
-    raw = bestK * L + proj.along;
+    raw = Math.max(0, bestK * L + proj.along);
     // Antes de la salida el corredor puede estar "detrás" de la línea (final de vuelta).
     if (!prev && proj.along > L - 500) raw = 0;
   }
@@ -127,13 +137,15 @@ export function advanceTracker(course: CourseModel, state: TrackerState, fix: { 
 
   let progress = state.progress;
   const crossings: Crossing[] = [];
+  const firstRaw = state.firstRaw ?? (onRoute ? raw : null);
   if (onRoute) {
     if (prev && dt > 0 && (raw - unwrappedPrev) / dt > MAX_PLAUSIBLE_SPEED_MS) {
       flags.push('implausible_jump');
     } else if (raw > state.progress) {
       if (prev && prev.onRoute && fix.t - prev.t <= MAX_CROSSING_INTERPOLATION_MS && raw > prev.raw) {
         for (const cp of course.checkpoints) {
-          if (cp.courseDistance > state.progress && cp.courseDistance <= raw && cp.courseDistance > 0) {
+          const approached = firstRaw !== null && cp.courseDistance - firstRaw >= MIN_APPROACH_M;
+          if (cp.courseDistance > state.progress && cp.courseDistance <= raw && cp.courseDistance > 0 && approached) {
             const f = Math.max(0, Math.min(1, (cp.courseDistance - prev.raw) / (beyond - prev.raw)));
             crossings.push({ checkpoint: cp, passedAt: Math.round(prev.t + f * (fix.t - prev.t)) });
           }
@@ -150,7 +162,7 @@ export function advanceTracker(course: CourseModel, state: TrackerState, fix: { 
   const lap = Math.min(course.laps - 1, Math.floor(raw / L));
   const usable = onRoute && !flags.includes('implausible_jump');
   return {
-    state: { progress, last: { t: fix.t, raw: usable ? raw : unwrappedPrev, onRoute: usable } },
+    state: { progress, last: { t: fix.t, raw: usable ? raw : unwrappedPrev, onRoute: usable }, firstRaw },
     sample: { t: fix.t, lat: fix.lat, lon: fix.lon, progress, along: proj.along, lap, offset: proj.offset, onRoute },
     crossings,
     flags,

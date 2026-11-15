@@ -335,7 +335,16 @@ export class LiveManager {
     const finishKey = lr.course?.finishKey;
     if (!finishKey) return;
     const fin = resolvePassings(ps.passings).find((p) => p.key === finishKey);
-    if (!fin) return;
+    if (!fin) {
+      // Una llegada que ya no se sostiene al recalcular (p. ej. un falso cruce por error GPS)
+      // se retira mientras la carrera siga en directo. Una llegada manual nunca desaparece aquí.
+      if (ps.p.status === 'finished' && lr.race.status === 'live') {
+        ps.p.status = 'racing';
+        ps.p.finishedAt = null;
+        await this.db.query(`UPDATE participants SET status = 'racing', finished_at = NULL WHERE id = $1`, [ps.p.id]);
+      }
+      return;
+    }
     const finishedAtIso = new Date(fin.passedAt).toISOString();
     if (ps.p.status === 'racing' || (ps.p.status === 'finished' && ps.p.finishedAt !== finishedAtIso)) {
       ps.p.status = 'finished';
