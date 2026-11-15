@@ -218,6 +218,13 @@ describe('flujo de carrera oficial', () => {
     expect(text).not.toContain('TRK-001');
   });
 
+  it('un dispositivo sin asignar recibe 409 para conservar sus datos y reintentar', async () => {
+    const d = await app.inject({ method: 'POST', url: '/api/v1/admin/devices', headers: H(), payload: { serial: 'TRK-099' } });
+    const res = await telemetry(d.json().token, { ts: Date.now(), ...at(1) });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().rejected[0].reason).toBe('device_not_assigned');
+  });
+
   it('un dispositivo simulado no puede asignarse a una carrera oficial', async () => {
     await ensureDemoRace(db);
     const sim = await db.query<{ id: string }>(`SELECT id FROM devices WHERE is_simulated LIMIT 1`);

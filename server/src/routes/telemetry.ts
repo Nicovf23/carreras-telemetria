@@ -55,10 +55,12 @@ export async function registerTelemetryRoutes(app: FastifyInstance) {
         rejected: results.flatMap((r, index) => (r.status === 'rejected' ? [{ index, reason: r.reason }] : [])),
       };
       // 207 si parte del lote se rechazó; el dispositivo solo debe reintentar ante errores 5xx o de red.
-      return reply.status(summary.rejected.length && summary.accepted + summary.duplicates > 0 ? 207 : summary.rejected.length ? 422 : 200).send({
-        ...summary,
-        serverTime,
-      });
+      // Excepción: si TODO se rechaza porque el dispositivo aún no está asignado a un ciclista,
+      // los datos son válidos y no deben perderse → 409 para que el dispositivo los conserve y reintente.
+      const processed = summary.accepted + summary.duplicates;
+      const notAssigned = summary.rejected.length > 0 && summary.rejected.every((r) => r.reason === 'device_not_assigned');
+      const status = !summary.rejected.length ? 200 : processed > 0 ? 207 : notAssigned ? 409 : 422;
+      return reply.status(status).send({ ...summary, serverTime });
     },
   );
 }

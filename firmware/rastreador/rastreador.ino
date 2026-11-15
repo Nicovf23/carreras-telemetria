@@ -115,12 +115,15 @@ static void sendBatch() {
     backoffMs = 0;
     led(false, true, false);
   } else {
-    // 401: token incorrecto · 429/5xx/negativo: reintentar con espera exponencial
+    // 401: token incorrecto · 409: dispositivo aún sin asignar a un ciclista ·
+    // 429/5xx/negativo: fallo temporal. En todos se conservan los datos y se reintenta.
     backoffMs = backoffMs ? min<uint32_t>(backoffMs * 2, 120000) : 5000;
     led(true, false, false);
   }
   Serial.printf("[envio] %u muestras -> HTTP %d · pendientes %u%s\n", (unsigned)n, code, (unsigned)bufCount,
-                code == 401 ? " (token no valido: revisa 'token')" : "");
+                code == 401   ? " (token no valido: revisa 'token')"
+                : code == 409 ? " (dispositivo sin asignar: asignalo a un ciclista en el panel)"
+                              : "");
 }
 
 static void printStatus() {

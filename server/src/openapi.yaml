@@ -86,7 +86,8 @@ paths:
       description: |
         Cada mensaje se valida por separado. El dispositivo debe **eliminar de su búfer** los mensajes
         cuya respuesta sea 200, 207 o 422 (aceptados, duplicados o rechazados definitivamente) y
-        **reintentar** solo ante errores de red, 429 o 5xx (con espera exponencial).
+        **reintentar** ante errores de red, 409 (dispositivo aún sin asignar a un ciclista: los datos
+        son válidos y deben conservarse), 429 o 5xx (con espera exponencial).
         Los duplicados se detectan por `(dispositivo, ts)`, por lo que reenviar es seguro.
         Los datos atrasados o fuera de orden se aceptan y la clasificación se recalcula.
       security: [{ deviceToken: [] }]
@@ -109,6 +110,7 @@ paths:
         '200': { $ref: '#/components/responses/TelemetryResult' }
         '207': { $ref: '#/components/responses/TelemetryResult' }
         '422': { $ref: '#/components/responses/TelemetryResult' }
+        '409': { $ref: '#/components/responses/TelemetryResult' }
         '401': { $ref: '#/components/responses/Error' }
         '429': { description: Demasiadas peticiones (máx. 240/min por dispositivo) }
 

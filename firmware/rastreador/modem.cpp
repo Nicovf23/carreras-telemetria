@@ -32,8 +32,10 @@ bool Modem::waitFor(const char *token, uint32_t timeoutMs, String *collected) {
         line = "";
       } else if (c != '\r') {
         line += c;
-        // Indicadores sin salto de línea (p. ej. el ">" o "DOWNLOAD" de algunos comandos)
-        if (line == token) {
+        // Indicadores que pueden llegar sin salto de línea ("DOWNLOAD", ">"). Para el resto
+        // hay que esperar la línea completa: "+HTTPACTION:" sin su código daría un 0 falso.
+        bool promptToken = strcmp(token, "DOWNLOAD") == 0 || strcmp(token, ">") == 0;
+        if (promptToken && line == token) {
           if (collected) *collected += line + "\n";
           return true;
         }

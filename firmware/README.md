@@ -78,8 +78,8 @@ porque cada token pertenece a un único dispositivo, y cada dispositivo está as
 * Posición cada 5 s (`muestreo`), envío cada 5 s (`envio`), en lotes de hasta 40.
 * **Sin fix GNSS no se guarda ninguna posición** (no se inventan datos).
 * Sin cobertura: hasta 2 h de datos en RAM; se envían del más antiguo al más reciente al volver.
-* Respuesta 200/207/422 → se borran del búfer; 401 → token incorrecto; otros → reintento con espera
-  exponencial (5 s → 2 min).
+* Respuesta 200/207/422 → se borran del búfer; 401 → token incorrecto; 409 → dispositivo sin asignar
+  a un ciclista (se conservan); otros → reintento con espera exponencial (5 s → 2 min).
 * LED: azul parpadeando = buscando GPS · verde = último envío correcto · rojo = fallo de envío.
 
 ## ANT+ (frecuencia cardíaca y potencia)

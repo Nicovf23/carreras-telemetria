@@ -82,6 +82,8 @@ Un lote: `{ "messages": [ …hasta 500 mensajes… ] }`.
 ```
 * `200` todo aceptado/duplicado · `207` parcialmente rechazado · `422` todo rechazado
   → en los tres casos el dispositivo **borra esos mensajes de su búfer**.
+* `409` el dispositivo aún no está asignado a ningún ciclista: los datos son válidos, **consérvalos**
+  y reintenta (se aceptarán en cuanto el organizador lo asigne).
 * `401` credencial no válida · `429` límite (240 peticiones/min por dispositivo) · `5xx` / sin red
   → **reintentar** más tarde con espera exponencial.
 
